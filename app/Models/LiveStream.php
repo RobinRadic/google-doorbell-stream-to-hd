@@ -47,18 +47,14 @@ class LiveStream extends Model
         return $this->belongsTo(Google::class, 'project_id', 'project_id');
     }
 
-    public static function extend(Device $device, array $data)
+    public function extend(array $data)
     {
-        $ls                  = static
-            ::whereProjectId($device->getProjectId())
-            ->whereDeviceId($device->getDeviceId())
-            ->firstOrFail();
-        $data                = $data[ 'results' ] ?? $data;
-        $ls->expires_at      = $data[ 'expiresAt' ];
-        $ls->extension_token = $data[ 'streamExtensionToken' ];
-        $ls->token           = $data[ 'streamToken' ];
-        $ls->save();
-        return $ls;
+        $data                  = $data[ 'results' ] ?? $data;
+        $this->expires_at      = $data[ 'expiresAt' ];
+        $this->extension_token = $data[ 'streamExtensionToken' ];
+        $this->token           = $data[ 'streamToken' ];
+        $this->save();
+        return $this;
     }
 
     public static function start(Device $device, array $data)
@@ -75,12 +71,9 @@ class LiveStream extends Model
         return $ls;
     }
 
-    public static function stop(Device $device)
+    public function stop()
     {
-        return static
-            ::whereProjectId($device->getProjectId())
-            ->whereDeviceId($device->getDeviceId())
-            ->firstOrFail()->delete();
+        return $this->delete();
     }
 
     public function setExpiresAtAttribute($value)

@@ -27,7 +27,7 @@ class Recorder
         $this->attributes = new Attributes([
             'url'        => null,
             'bitrate'    => 900,
-            'fps'        => 60,
+            'fps'        => 30,
             'directory'  => config('google.smd.output_directory'),
             'filepath'   => '{Y}/{m}-{M}/{d}-{D}/{H}-{i}-{s}',
             'extension'  => 'avi',
@@ -59,17 +59,17 @@ class Recorder
             null,
             $this->attributes->get('split_time') + 10
         );
-        $this->process->start();
+        $this->process->mustRun();
     }
 
     public function stop()
     {
-        $this->process->stop();
+        $this->process->stop(1);
     }
 
     public function restart()
     {
-        $this->process->stop();
+        $this->process->stop(1);
         $this->start();
     }
 

@@ -64,10 +64,10 @@ class LivestreamLoop
     public function tick()
     {
         if ($this->hasReceivedTerminationSignal()) {
-            Loop::stop();
+            $this->stop();
         }
         if ($this->ls->isExpired()) {
-            Loop::stop();
+            $this->stop();
         }
         $expiresIn = $this->ls->getSecondsUntilExpires();
         if ($expiresIn < 30) {

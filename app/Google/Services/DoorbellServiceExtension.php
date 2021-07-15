@@ -18,6 +18,7 @@ class DoorbellServiceExtension extends AbstractGoogleServiceExtension
 
     protected string $previousRandomKey;
     protected LivestreamLoop $loop;
+    protected LiveStream $ls;
 
 
     public function makePicture(Device $device)
@@ -29,28 +30,27 @@ class DoorbellServiceExtension extends AbstractGoogleServiceExtension
     public function startLivestream(Device $device, callable $startingCallback = null, bool $loop = true): LiveStream
     {
         $data = $this->executeCommand($device, self::COMMAND_START_LIVESTREAM);
-        $ls = LiveStream::start($device, $data);
+        $this->ls = LiveStream::start($device, $data);
         if($loop) {
-            $this->loop = new LivestreamLoop($this->google, $ls, $device);
+            $this->loop = new LivestreamLoop($this->google, $this->ls, $device);
             if ($startingCallback) {
-                $startingCallback($ls, $this->loop);
+                $startingCallback($this->ls, $this->loop);
             }
             $this->loop->start();
         }
-        return $ls;
     }
 
     public function extendLivestream(Device $device, string $streamExtensionToken): LiveStream
     {
         $data = $this->executeCommand($device, self::COMMAND_EXTEND_LIVESTREAM, compact('streamExtensionToken'));
-        return LiveStream::extend($device,$data);
+        return $this->ls->extend($data);
     }
 
     public function stopLivestream(Device $device, string $streamExtensionToken): LiveStream
     {
         $data = $this->executeCommand($device, self::COMMAND_STOP_LIVESTREAM, compact('streamExtensionToken'));
         $this->loop->stop();
-        return LiveStream::stop($device);
+        $this->ls->stop();
     }
 
     protected function generateRandomKey(): string
