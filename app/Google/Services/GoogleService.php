@@ -40,6 +40,7 @@ class GoogleService
         }
         $this->client->setAccessToken($google->access_token);
         $this->client->refreshToken($google->refresh_token);
+        $this->client->setDeveloperKey(env('GOOGLE_API_KEY',''));
 
         $this->http = $this->client->authorize();
     }

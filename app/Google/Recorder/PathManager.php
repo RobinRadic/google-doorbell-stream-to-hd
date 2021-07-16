@@ -18,7 +18,7 @@ class PathManager
     public function __construct()
     {
         $this->parser     = new StringParser();
-        $this->attributes = new Attributes(config('google.smd.recording.command_variables'));
+        $this->attributes = new Attributes(config('google.smd.recording'));
         $this->attributes->set('device', []);
     }
 
@@ -32,14 +32,22 @@ class PathManager
         $this->attributes->set('device', $device->toArray());
     }
 
+    public function getDirectoryPath()
+    {
+        return Path::getDirectory($this->resolveFilePath());
+    }
+
+    public function getRandomFilePath(string $extension = 'avi')
+    {
+        return Path::join($this->getDirectoryPath(), Str::random() . '.' . $extension);
+    }
+
     public function getTemporaryDirPath()
     {
-        $dirPath = Path::getDirectory($this->resolveFilePath());
-        $dirPath = Path::join($dirPath, '.tmp');
+        $dirPath = Path::join($this->getDirectoryPath(), '.tmp');
         File::ensureDirectoryExists($dirPath, 493, true);
         return $dirPath;
     }
-
     public function getTemporaryRandomFilePath(string $extension = 'avi')
     {
         return Path::join($this->getTemporaryDirPath(), Str::random() . '.' . $extension);

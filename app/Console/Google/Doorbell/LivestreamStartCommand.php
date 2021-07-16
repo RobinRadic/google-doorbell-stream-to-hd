@@ -3,12 +3,9 @@
 namespace App\Console\Google\Doorbell;
 
 use App\Google\DataModels\Device;
-use App\Google\LivestreamLoop;
-use App\Google\Recorder;
+use App\Google\Recorder\Recorder;
 use App\Models\Google;
-use App\Models\LiveStream;
 use Illuminate\Console\Command;
-use Symfony\Component\Console\Output\OutputInterface;
 
 class LivestreamStartCommand extends Command
 {
@@ -38,8 +35,9 @@ class LivestreamStartCommand extends Command
         }
 
         $liveStream = $service->doorbell->startLivestream($device);
-        $recorder = new Recorder\RecorderLoop($liveStream);
+        $recorder   = new Recorder($liveStream);
+        $recorder->onTick(fn () => $this->line($recorder->getTicks()));
+        $recorder->onExtend(fn () => $this->comment('extended'));
         $recorder->start();
-
     }
 }

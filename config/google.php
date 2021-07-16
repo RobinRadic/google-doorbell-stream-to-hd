@@ -17,48 +17,22 @@ return [
         'response_type'    => 'code',
         'recording'        => [
             'enabled'           => true,
+            'directory'  => env('GOOGLE_DOORBELL_OUTPUT_DIRECTORY'),
             /**
              * @template
-             * The command uses @link https://packagist.org/packages/nicmart/string-template
-             * The [command_variables] are used to provide the values for the {placeholders}
+             *
+             * The [filepath] will have the above [directory] prepended.
+             *
+             * The [filepath] value wil be parsed by string-template. The usable variables are:
+             * The {@see \App\Google\Recorder\PathManager::getDateParameters()}
+             * and {@see \App\Google\DataModels\Device::toArray()}
+             *
+             * By using this default template,
+             * files will be placed like [directory]/2021/07-Jul/16-Fri/07-02-30.avi
              */
-            'command'           => 'ffmpeg -i {url} -b {bitrate} -vcodec copy -r {fps} -y {filepath}',
-            /**
-             * The [command_variables] are used to provide the string-template values
-             * For the {placeholders} in both the [command] and [command_variables.filepath] values
-             */
-            'command_variables' => [
-                // url: this value will be override on runtime, after the google server responds with, the rtsp:// link will be filled in.
-                'url'        => null,
-                'bitrate'    => '900k',
-                'fps'        => 30,
-                'directory'  => env('GOOGLE_DOORBELL_OUTPUT_DIRECTORY'),
-                /**
-                 * @template
-                 * @see \App\Google\Recorder::getDateParameters()
-                 * The [filepath] value wil also be parsed by string-template.
-                 * The [command_variables] are used to provide the string-template values
-                 * The characters you see are all provided by the `date()` function
-                 * ! The [directory] will be prepended. So don't include it there.
-                 */
-                'filepath'   => '{Y}/{m}-{M}/{d}-{D}/{H}-{i}-{s}',
-                'extension'  => 'avi', // File type extension. Will be appended to the filepath (including a dot . obviously)
-                'split_time' => 60 * 60, // Seconds between splitting each recording into a file. Currently 1 Hour
-                'device'     => [
-                    // these values will be override by $device->toArray(). can be used in the [command] AND [filepath] template
-                    'assignee'        => null,
-                    'name'            => null,
-                    'parentRelations' => null,
-                    'traits'          => null,
-                    'type'            => null,
-                    'projectId'       => null,
-                    'deviceId'        => null,
-                    'deviceType'      => null,
-                    'structureId'     => null,
-                    'roomId'          => null,
-                    'roomName'        => null,
-                ],
-            ],
+            'filepath'   => '{Y}/{m}-{M}/{d}-{D}/{H}-{i}-{s}',
+            'extension'  => 'avi',
+            'split_time' => 60 * 60, // max video time, in seconds.
         ],
     ],
 ];
