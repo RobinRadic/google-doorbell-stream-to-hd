@@ -6,6 +6,8 @@ use App\Google\DataModels\Device;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use League\Uri\Components\Query;
+use League\Uri\Uri;
 
 /**
  * App\Models\LiveStream
@@ -40,6 +42,10 @@ class LiveStream extends Model
 
     protected $guarded = [];
 
+    protected $observables = [ 'extending', 'extended' ];
+
+    protected Device $device;
+
     use HasFactory;
 
     public function google()
@@ -47,20 +53,41 @@ class LiveStream extends Model
         return $this->belongsTo(Google::class, 'project_id', 'project_id');
     }
 
+    public static function extending($callback)
+    {
+        static::registerModelEvent('extending', $callback);
+    }
+
+    public static function extended($callback)
+    {
+        static::registerModelEvent('extended', $callback);
+    }
+
     public function extend(array $data)
     {
+        $this->fireModelEvent('extending');
         $data                  = $data[ 'results' ] ?? $data;
         $this->expires_at      = $data[ 'expiresAt' ];
         $this->extension_token = $data[ 'streamExtensionToken' ];
         $this->token           = $data[ 'streamToken' ];
+        $this->url             = $this->updateUrlWithToken($this->url, $this->token);
         $this->save();
+        $this->fireModelEvent('extended');
         return $this;
+    }
+
+    protected function updateUrlWithToken($url, $token)
+    {
+        $uri      = Uri::createFromString($url);
+        $newQuery = Query::createFromUri($uri)->withPair('auth', $token)->jsonSerialize();
+        return $uri->withQuery($newQuery)->jsonSerialize();
     }
 
     public static function start(Device $device, array $data)
     {
         $data                = $data[ 'results' ] ?? $data;
         $ls                  = new static();
+        $ls->device          = $device;
         $ls->project_id      = $device->getProjectId();
         $ls->device_id       = $device->getDeviceId();
         $ls->expires_at      = $data[ 'expiresAt' ];
@@ -78,8 +105,7 @@ class LiveStream extends Model
 
     public function setExpiresAtAttribute($value)
     {
-        $value                            = Carbon::make($value)->toDateTimeString();
-        $this->attributes[ 'expires_at' ] = $value;
+        $this->attributes[ 'expires_at' ] = Carbon::make($value)->toDateTimeString();
     }
 
     public function getExpiresAt()
@@ -116,4 +142,10 @@ class LiveStream extends Model
     {
         return $this->url;
     }
+
+    public function getDevice()
+    {
+        return $this->device;
+    }
+
 }

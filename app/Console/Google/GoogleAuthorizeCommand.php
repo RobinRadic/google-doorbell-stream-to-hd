@@ -1,8 +1,9 @@
 <?php
 
-namespace App\Console;
+namespace App\Console\Google;
 
 use Illuminate\Console\Command;
+use function route;
 
 class GoogleAuthorizeCommand extends Command
 {

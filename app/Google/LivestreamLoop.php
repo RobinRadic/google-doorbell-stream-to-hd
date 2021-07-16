@@ -2,17 +2,13 @@
 
 namespace App\Google;
 
-use App\Google\DataModels\Device;
 use App\Google\Services\DoorbellServiceExtension;
-use App\Google\Services\GoogleService;
 use App\Models\LiveStream;
 use Illuminate\Support\Facades\File;
 use React\EventLoop\Loop;
 
 class LivestreamLoop
 {
-
-    protected DoorbellServiceExtension $doorbell;
 
     protected int $ticks = 0;
 
@@ -22,16 +18,26 @@ class LivestreamLoop
 
     protected array $stopCallbacks = [];
 
+    protected array $extendCallbacks = [];
+
     public function onStart(callable $callback)
     {
         $this->startCallbacks[] = $callback;
         return $this;
     }
+
     public function onTick(callable $callback)
     {
         $this->tickCallbacks[] = $callback;
         return $this;
     }
+
+    public function onExtend(callable $callback)
+    {
+        $this->extendCallbacks[] = $callback;
+        return $this;
+    }
+
     public function onStop(callable $callback)
     {
         $this->stopCallbacks[] = $callback;
@@ -40,12 +46,12 @@ class LivestreamLoop
 
     /**
      * @param array|callable[] $callbacks
-     * @param array $arguments
+     * @param array            $arguments
      * @return void
      */
     protected function runCallbacks(array $callbacks, array $arguments = [])
     {
-        foreach($callbacks as $callback){
+        foreach ($callbacks as $callback) {
             $callback(...$arguments);
         }
     }
@@ -53,13 +59,28 @@ class LivestreamLoop
     /**
      * LivestreamLoop constructor.
      */
-    public function __construct(protected GoogleService $service,
-                                protected LiveStream $ls,
-                                protected Device $device)
+    public function __construct(protected DoorbellServiceExtension $doorbell,
+                                protected LiveStream $ls)
     {
-        $this->doorbell = $this->service->doorbell;
-        Loop::addPeriodicTimer(1, [ $this, 'tick' ]);
     }
+
+    public function start()
+    {
+        $this->removeTerminationSignal();
+        $this->runCallbacks($this->startCallbacks, [$this->ls]);
+        Loop::addPeriodicTimer(1, [ $this, 'tick' ]);
+        Loop::run();
+    }
+
+    public function stop()
+    {
+        Loop::stop();
+        $this->removeTerminationSignal();
+        File::put(static::getDataFilePath(), 'not running');
+        $this->runCallbacks($this->stopCallbacks, [$this->ls]);
+    }
+
+    protected $extended = false;
 
     public function tick()
     {
@@ -70,12 +91,18 @@ class LivestreamLoop
             $this->stop();
         }
         $expiresIn = $this->ls->getSecondsUntilExpires();
-        if ($expiresIn < 30) {
-            $this->ls = $this->doorbell->extendLivestream($this->device, $this->ls->extension_token);
+        if ($expiresIn < 80 && $this->extended === false) {
+//            $this->ls = $this->doorbell->extendLivestream($this->device, $this->ls->extension_token);
+            $this->doorbell->extendLivestream($this->ls);
+            $this->extended = true;
+            $this->runCallbacks($this->extendCallbacks, [$this->ls]);
+            Loop::futureTick(function () {
+                $this->extended = false;
+            });
         }
         $this->ticks++;
         $this->writeUptimeDataToFile($expiresIn);
-        $this->runCallbacks($this->tickCallbacks);
+        $this->runCallbacks($this->tickCallbacks, [ $this->ls ]);
     }
 
     protected function writeUptimeDataToFile(int $expiresIn)
@@ -88,21 +115,6 @@ class LivestreamLoop
         $lines[] = "device id:      {$this->ls->device_id}";
         $lines[] = "url:            {$this->ls->url}";
         File::put(static::getDataFilePath(), implode("\n", $lines));
-    }
-
-    public function start()
-    {
-        $this->removeTerminationSignal();
-        $this->runCallbacks($this->startCallbacks);
-        Loop::run();
-    }
-
-    public function stop()
-    {
-        Loop::stop();
-        $this->removeTerminationSignal();
-        File::put(static::getDataFilePath(), 'not running');
-        $this->runCallbacks($this->stopCallbacks);
     }
 
     protected function hasReceivedTerminationSignal()
@@ -125,11 +137,6 @@ class LivestreamLoop
         return $this->ls;
     }
 
-    public function getDevice()
-    {
-        return $this->device;
-    }
-
     public static function getDataFilePath()
     {
         return storage_path('livestreamloop.info');
@@ -145,7 +152,5 @@ class LivestreamLoop
         File::put(static::getTerminationSignalFilePath(), '');
         File::put(static::getDataFilePath(), 'not running');
     }
-
-
 
 }

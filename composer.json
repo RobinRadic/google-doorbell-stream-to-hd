@@ -15,7 +15,10 @@
         "guzzlehttp/psr7": "^1.2",
         "laravel/framework": "^8.40",
         "laravel/tinker": "^2.5",
+        "league/uri": "^6.4",
+        "league/uri-components": "^2.3",
         "nicmart/string-template": "^0.1.2",
+        "php-ffmpeg/php-ffmpeg": "^0.18.0",
         "react/react": "^1.2",
         "symfony/process": "^5.3",
         "webmozart/path-util": "^2.3"

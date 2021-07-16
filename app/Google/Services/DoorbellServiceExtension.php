@@ -3,7 +3,6 @@
 namespace App\Google\Services;
 
 use App\Google\DataModels\Device;
-use App\Google\DataModels\DeviceCollection;
 use App\Google\LivestreamLoop;
 use App\Models\LiveStream;
 use Illuminate\Encryption\Encrypter;
@@ -14,11 +13,9 @@ class DoorbellServiceExtension extends AbstractGoogleServiceExtension
     public const COMMAND_EXTEND_LIVESTREAM = 'sdm.devices.commands.CameraLiveStream.ExtendRtspStream';
     public const COMMAND_STOP_LIVESTREAM = 'sdm.devices.commands.CameraLiveStream.StopRtspStream';
     public const COMMAND_PICTURE = 'sdm.devices.commands.CameraEventImage.GenerateImage';
-    public const TYPE='sdm.devices.types.DOORBELL';
+    public const TYPE = 'sdm.devices.types.DOORBELL';
 
     protected string $previousRandomKey;
-    protected LivestreamLoop $loop;
-    protected LiveStream $ls;
 
 
     public function makePicture(Device $device)
@@ -27,30 +24,23 @@ class DoorbellServiceExtension extends AbstractGoogleServiceExtension
         return $data;
     }
 
-    public function startLivestream(Device $device, callable $startingCallback = null, bool $loop = true): LiveStream
+    public function startLivestream(Device $device, callable $startingCallback = null): LiveStream
     {
         $data = $this->executeCommand($device, self::COMMAND_START_LIVESTREAM);
-        $this->ls = LiveStream::start($device, $data);
-        if($loop) {
-            $this->loop = new LivestreamLoop($this->google, $this->ls, $device);
-            if ($startingCallback) {
-                $startingCallback($this->ls, $this->loop);
-            }
-            $this->loop->start();
-        }
+        $ls   = LiveStream::start($device, $data);
+        return $ls;
     }
 
-    public function extendLivestream(Device $device, string $streamExtensionToken): LiveStream
+    public function extendLivestream(LiveStream $ls): LiveStream
     {
-        $data = $this->executeCommand($device, self::COMMAND_EXTEND_LIVESTREAM, compact('streamExtensionToken'));
-        return $this->ls->extend($data);
+        $data = $this->executeCommand($ls->getDevice(), self::COMMAND_EXTEND_LIVESTREAM, [ 'streamExtensionToken' => $ls->extension_token ]);
+        return $ls->extend($data);
     }
 
-    public function stopLivestream(Device $device, string $streamExtensionToken): LiveStream
+    public function stopLivestream(LiveStream $ls): LiveStream
     {
-        $data = $this->executeCommand($device, self::COMMAND_STOP_LIVESTREAM, compact('streamExtensionToken'));
-        $this->loop->stop();
-        $this->ls->stop();
+        $data = $this->executeCommand($ls->getDevice(), self::COMMAND_STOP_LIVESTREAM, [ 'streamExtensionToken' => $ls->extension_token ]);
+        $ls->stop();
     }
 
     protected function generateRandomKey(): string
@@ -58,8 +48,4 @@ class DoorbellServiceExtension extends AbstractGoogleServiceExtension
         return $this->previousRandomKey = base64_encode(Encrypter::generateKey(config('app.cipher')));
     }
 
-    public function getLoop()
-    {
-        return $this->loop;
-    }
 }

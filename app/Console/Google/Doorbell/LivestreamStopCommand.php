@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Console;
+namespace App\Console\Google\Doorbell;
 
 use App\Google\LivestreamLoop;
 use Illuminate\Console\Command;
 
-class GoogleDoorbellStopCommand extends Command
+class LivestreamStopCommand extends Command
 {
     protected $signature = 'google:doorbell:stop';
 

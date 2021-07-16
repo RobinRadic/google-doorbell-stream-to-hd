@@ -85,9 +85,15 @@ class Google extends Model
         ]);
     }
 
+    /** @var GoogleService */
+    protected $googleService;
+
     public function getGoogleService()
     {
-        return new GoogleService($this);
+        if ($this->googleService === null) {
+            $this->googleService = new GoogleService($this);
+        }
+        return $this->googleService;
     }
 
     public function setToken($token)

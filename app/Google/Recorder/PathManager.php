@@ -1,91 +1,51 @@
 <?php
 
-namespace App\Google;
+namespace App\Google\Recorder;
 
+use App\Google\DataModels\Device;
 use App\Support\Attributes;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use StringTemplate\Engine as StringParser;
-use Symfony\Component\Process\Exception\LogicException;
-use Symfony\Component\Process\Exception\ProcessFailedException;
-use Symfony\Component\Process\Exception\RuntimeException;
-use Symfony\Component\Process\Process;
-use Throwable;
 use Webmozart\PathUtil\Path;
 
-class Recorder
+class PathManager
 {
     protected StringParser $parser;
 
     protected Attributes $attributes;
 
-    protected string $command;
-
-    protected int $splitTimeRemaining;
-
-    protected Process $process;
-
-    public function __construct(protected LivestreamLoop $loop)
+    public function __construct()
     {
         $this->parser     = new StringParser();
-        $this->command    = config('google.smd.recording.command');
         $this->attributes = new Attributes(config('google.smd.recording.command_variables'));
-        $this->attributes->set('device', $loop->getLiveStream()->getDevice()->toArray());
+        $this->attributes->set('device', []);
     }
 
-    public function start()
+    public function getAttributes()
     {
-        $this->attributes->set('url', $this->loop->getLiveStream()->getUrl());
-        $this->splitTimeRemaining = $this->attributes->get('split_time');
-        $this->loop->onTick(function () {
-            if ($this->splitTimeRemaining === 1) {
-                $this->restart();
-            }
-            $this->splitTimeRemaining--;
-        });
-        $command = explode(' ', $this->parseCommand());
-        try {
-            $this->process = new Process($command);
-            $this->process
-                ->setTimeout(null)
-                ->setIdleTimeout(null)
-                ->disableOutput();
-            $this->process->start(function (...$args) {
-                return;
-            });
-        }
-        catch (LogicException $exception) {
-            throw $exception;
-        }
-        catch (ProcessFailedException $exception) {
-            throw $exception;
-        }
-        catch (RuntimeException $exception) {
-            throw $exception;
-        }
-        catch (Throwable $exception) {
-            throw $exception;
-        }
+        return $this->attributes;
     }
 
-    public function stop()
+    public function setDevice(Device $device)
     {
-        $this->process->signal(SIGKILL);
+        $this->attributes->set('device', $device->toArray());
     }
 
-    public function restart()
+    public function getTemporaryDirPath()
     {
-        $this->process->stop(1);
-        $this->start();
+        $dirPath = Path::getDirectory($this->resolveFilePath());
+        $dirPath = Path::join($dirPath, '.tmp');
+        File::ensureDirectoryExists($dirPath, 493, true);
+        return $dirPath;
     }
 
-    protected function parseCommand()
+    public function getTemporaryRandomFilePath(string $extension = 'avi')
     {
-        $this->attributes->set('filepath', $this->resolveFilePath());
-        return $this->parser->render($this->command, $this->attributes->toArray());
+        return Path::join($this->getTemporaryDirPath(), Str::random() . '.' . $extension);
     }
 
-    protected function resolveFilePath()
+    public function resolveFilePath()
     {
         $directory = $this->attributes->get('directory');
         $filepath  = $this->attributes->get('filepath');
@@ -98,18 +58,17 @@ class Recorder
         $extension = Str::startsWith($extension, '.') ? $extension : '.' . $extension;
         $filepath  = Path::join($directory, $filepath) . $extension;
         $this->ensureFilePathDirectory($filepath);
-        $this->cleanExistingFile($filepath);
         return $filepath;
     }
 
-    protected function ensureFilePathDirectory($filePath)
+    public function ensureFilePathDirectory($filePath)
     {
         $directory = Path::getDirectory($filePath);
         File::ensureDirectoryExists($directory, 493, true);
         return $this;
     }
 
-    protected function cleanExistingFile($filePath)
+    public function cleanExistingFile($filePath)
     {
         if (File::exists($filePath)) {
             File::delete($filePath);
@@ -168,19 +127,5 @@ class Recorder
             'U' => '- The seconds since the Unix Epoch (January 1 1970 00:00:00 GMT)',
         ];
     }
-
-    public function getAttributes()
-    {
-        return $this->attributes;
-    }
-
-    public function getProcess()
-    {
-        return $this->process;
-    }
-
-
-
-
 
 }

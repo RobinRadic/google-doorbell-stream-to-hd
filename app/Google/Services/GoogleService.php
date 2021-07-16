@@ -151,7 +151,10 @@ class GoogleService
     {
         if (isset(static::$extensions[ $name ])) {
             $class = static::$extensions[ $name ];
-            return App::make($class, [ 'google' => $this ]);
+            if(is_string($class)) {
+                static::$extensions[ $name ] = App::make($class, [ 'google' => $this ]);
+            }
+            return static::$extensions[ $name ];
         }
         throw new \InvalidArgumentException("__get('{$name}') to get extension does not exist");
     }
