@@ -12,6 +12,8 @@ class LivestreamStatusCommand extends Command
 
     protected $description = 'livestreaming status';
 
+    protected $hidden = true;
+
     public function handle()
     {
         $path=LivestreamLoop::getDataFilePath();

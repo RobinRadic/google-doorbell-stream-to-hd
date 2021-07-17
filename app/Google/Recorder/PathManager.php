@@ -32,19 +32,34 @@ class PathManager
         $this->attributes->set('device', $device->toArray());
     }
 
+    public function getInfoDirectoryPath()
+    {
+        $dirPath = Path::join($this->getDirectoryPath(), '.info');
+        File::ensureDirectoryExists($dirPath, 493, true);
+        return $dirPath;
+    }
     public function getDirectoryPath()
     {
-        return Path::getDirectory($this->resolveFilePath());
+        $dirPath = $this->attributes->get('directory');
+        File::ensureDirectoryExists($dirPath, 493, true);
+        return $dirPath;
+    }
+
+    public function getFileDirectoryPath()
+    {
+        $dirPath= Path::getDirectory($this->resolveFilePath());
+        File::ensureDirectoryExists($dirPath, 493, true);
+        return $dirPath;
     }
 
     public function getRandomFilePath(string $extension = 'avi')
     {
-        return Path::join($this->getDirectoryPath(), Str::random() . '.' . $extension);
+        return Path::join($this->getFileDirectoryPath(), Str::random() . '.' . $extension);
     }
 
     public function getTemporaryDirPath()
     {
-        $dirPath = Path::join($this->getDirectoryPath(), '.tmp');
+        $dirPath = Path::join($this->getFileDirectoryPath(), '.tmp');
         File::ensureDirectoryExists($dirPath, 493, true);
         return $dirPath;
     }

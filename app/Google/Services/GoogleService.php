@@ -7,7 +7,6 @@ use App\Google\DataModels\DeviceCollection;
 use App\Models\Google;
 use Google\Client as GoogleClient;
 use GuzzleHttp\Client as GuzzleClient;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Str;
 use Psr\Http\Message\ResponseInterface;
@@ -27,8 +26,7 @@ class GoogleService
 
     protected string $baseUrl = 'https://smartdevicemanagement.googleapis.com/v1';
 
-    protected static $extensions = [];
-
+    protected static array $extensions = [];
 
     public function __construct(protected Google $google)
     {
@@ -40,9 +38,20 @@ class GoogleService
         }
         $this->client->setAccessToken($google->access_token);
         $this->client->refreshToken($google->refresh_token);
-        $this->client->setDeveloperKey(env('GOOGLE_API_KEY',''));
+        $this->client->setDeveloperKey(env('GOOGLE_API_KEY', ''));
 
         $this->http = $this->client->authorize();
+    }
+
+    protected function ensureAuthorization()
+    {
+        if ($this->client->isAccessTokenExpired()) {
+            $token = $this->client->fetchAccessTokenWithRefreshToken($this->google->refresh_token);
+            $this->google->setToken($token);
+            $this->client->setAccessToken($this->google->access_token);
+            $this->client->refreshToken($this->google->refresh_token);
+            $this->http = $this->client->authorize();
+        }
     }
 
     public static function make(Google $auth)
@@ -57,7 +66,7 @@ class GoogleService
     {
         $devices = $this->getJson("/enterprises/{project_id}/devices");
         if (isset($devices[ 'devices' ])) {
-            return DeviceCollection::make($devices['devices'])->map(fn (array $device) => new Device($device));
+            return DeviceCollection::make($devices[ 'devices' ])->map(fn(array $device) => new Device($device));
         }
         return new DeviceCollection;
     }
@@ -118,6 +127,7 @@ class GoogleService
 
     protected function applyOptions(array &$options)
     {
+        $this->ensureAuthorization();
         $options = array_replace_recursive([
             'headers' => [
                 'Content-Type'  => 'application/json',
@@ -140,8 +150,6 @@ class GoogleService
         return (string)$this->parser->render($url, $this->google->getAttributes());
     }
 
-
-
     public static function extend(string $name, string $class)
     {
         static::$extensions[ $name ] = $class;
@@ -152,15 +160,13 @@ class GoogleService
     {
         if (isset(static::$extensions[ $name ])) {
             $class = static::$extensions[ $name ];
-            if(is_string($class)) {
+            if (is_string($class)) {
                 static::$extensions[ $name ] = App::make($class, [ 'google' => $this ]);
             }
             return static::$extensions[ $name ];
         }
         throw new \InvalidArgumentException("__get('{$name}') to get extension does not exist");
     }
-
-
 
     public function getBaseUrl()
     {

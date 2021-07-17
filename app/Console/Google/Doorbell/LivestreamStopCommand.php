@@ -10,7 +10,7 @@ class LivestreamStopCommand extends Command
     protected $signature = 'google:doorbell:stop';
 
     protected $description = 'stop livestreaming';
-
+    protected $hidden = true;
     public function handle()
     {
         LivestreamLoop::terminateProcess();

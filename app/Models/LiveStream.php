@@ -105,7 +105,12 @@ class LiveStream extends Model
 
     public function setExpiresAtAttribute($value)
     {
-        $this->attributes[ 'expires_at' ] = Carbon::make($value)->toDateTimeString();
+        $expiresAt = Carbon::make($value);
+        if(config('app.locale') === 'nl') {
+            $expiresAt->addHours(2);
+        }
+        $value = $expiresAt->toDateTimeString();
+        $this->attributes[ 'expires_at' ] = $value;
     }
 
     public function getExpiresAt()

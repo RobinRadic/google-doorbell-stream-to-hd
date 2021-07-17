@@ -3,18 +3,21 @@
 namespace App\Console\Google\Doorbell;
 
 use App\Google\DataModels\Device;
+use App\Google\Recorder\Record;
 use App\Google\Recorder\Recorder;
+use App\Google\Recorder\Recorder as R;
 use App\Models\Google;
 use Illuminate\Console\Command;
+use Symfony\Component\Console\Style\OutputStyle;
+use Webmozart\PathUtil\Path;
 
 class LivestreamStartCommand extends Command
 {
-    protected $signature = 'google:doorbell:start {name?}
-                                                  {--r|record : Records the livestream to the configured file(s) }
+    protected $signature = 'google:doorbell:start {name?}';
 
-                                                 ';
+    protected $description = 'Records the livestream of the doorbell camera';
 
-    protected $description = 'Initiates the livestream of the doorbell camera';
+    protected Recorder $recorder;
 
     public function handle()
     {
@@ -35,9 +38,57 @@ class LivestreamStartCommand extends Command
         }
 
         $liveStream = $service->doorbell->startLivestream($device);
-        $recorder   = new Recorder($liveStream);
-        $recorder->onTick(fn () => $this->line($recorder->getTicks()));
-        $recorder->onExtend(fn () => $this->comment('extended'));
+        $this->info('Livestream started');
+        $recorder = $this->recorder = new Recorder($liveStream);
+
+        $recorder->on(R::EVENT_START, function () {
+            $out = $this->getOutput();
+            $out->newLine();
+            $out->writeln("<fg=yellow>Livestream recording started. Recording to file:</>");
+            $out->writeln("<fg=white;options=bold,underscore>{$this->recorder->getCurrentRecord()->getFilePath()}</>");
+            $out->newLine();
+        });
+        $recorder->on(R::EVENT_SPLIT, function () {
+            $out = $this->getOutput();
+            $out->newLine();
+            $out->writeln("<fg=yellow>Split time recording reached. Now recording to file:</>");
+            $out->writeln("<fg=white;options=underscore>{$this->recorder->getCurrentRecord()->getFilePath()}</>");
+            $out->newLine();
+        });
+        $recorder->on(R::EVENT_TICK, fn() => $this->getOutput()->write($recorder->getTicks() . ' ', false, OutputStyle::VERBOSITY_VERY_VERBOSE));
+        $recorder->on(R::EVENT_EXTEND, fn() => $this->comment('extended', OutputStyle::VERBOSITY_VERBOSE));
+
+        $recorder->on(R::EVENT_TICK, function () {
+            if ($this->recorder->getTicks() === 20) {
+                $this->showRecordDetails($this->recorder->getCurrentRecord());
+            }
+            if ($this->recorder->getTicks() === 120) {
+                $this->showRecordDetails($this->recorder->getCurrentRecord());
+            }
+        });
         $recorder->start();
+    }
+
+    protected function showRecordDetails(Record $record)
+    {
+        $seconds  = $record->getDuration(Record::DURATION_SECONDS);
+        $minutes  = $record->getDuration(Record::DURATION_MINUTES);
+        $start    = $record->getStartTime()->toString();
+        $end      = $record->isRecording() ? '<comment>Still recording</comment>' : $record->getEndTime()->toString();
+        $duration = $seconds < 60 ? $seconds . ' seconds' : $minutes . ' minutes';
+        $filename = $record->getFilename();
+        $path     = "<options=underscore>{$record->getFilePath()}</>";
+        $out      = $this->getOutput();
+        $out->newLine();
+        $out->writeln(" <fg=yellow>Record details</> ");
+        $out->horizontalTable([ 'start', 'end', 'duration', 'filename', 'path' ], [
+            [
+                $start,
+                $end,
+                $duration,
+                $filename,
+                $path,
+            ],
+        ]);
     }
 }

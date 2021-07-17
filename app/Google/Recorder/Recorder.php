@@ -3,6 +3,8 @@
 namespace App\Google\Recorder;
 
 use App\Models\LiveStream;
+use Illuminate\Events\Dispatcher;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\File;
 use React\EventLoop\Loop;
 use Symfony\Component\Process\Process;
@@ -10,19 +12,19 @@ use Webmozart\PathUtil\Path;
 
 class Recorder
 {
+    public const EVENT_START = 'start';
+    public const EVENT_TICK = 'tick';
+    public const EVENT_EXTEND = 'extend';
+    public const EVENT_STOP = 'stop';
+    public const EVENT_SPLIT = 'split';
+
     protected int $ticks = 0;
 
     protected Process $streamProcess;
 
     protected PathManager $paths;
 
-    protected array $startCallbacks = [];
-
-    protected array $tickCallbacks = [];
-
-    protected array $stopCallbacks = [];
-
-    protected array $extendCallbacks = [];
+    protected Dispatcher $events;
 
     protected bool $extended = false;
 
@@ -32,9 +34,23 @@ class Recorder
 
     protected $tempFilePath;
 
+    protected $recordings = [];
+
+    protected Record $currentRecord;
+
+    /**
+     * The timer related logic is to save the current Record info as json
+     * @var \React\EventLoop\Timer\Timers
+     */
+
+    protected Timer $timer;
+
+    protected int $timerInterval = 20;
+
     public function __construct(protected LiveStream $ls)
     {
-        $this->paths = new PathManager();
+        $this->events = new Dispatcher();
+        $this->paths  = App::make(PathManager::class);
         $this->paths->setDevice($ls->getDevice());
     }
 
@@ -43,7 +59,10 @@ class Recorder
         Loop::addPeriodicTimer(1, [ $this, 'tick' ]);
         $this->resetSplitTime();
         $this->startStream();
-        $this->runCallbacks($this->startCallbacks, [ $this->ls ]);
+        $this->currentRecord = new Record($this->mainFilePath);
+        $this->currentRecord->start();
+        $this->timer = new Timer($this->timerInterval, [ $this->currentRecord, 'saveInfo' ]);
+        $this->fire(self::EVENT_START);
         Loop::run();
     }
 
@@ -51,7 +70,9 @@ class Recorder
     {
         $this->ticks++;
         $this->splitTime--;
-        $this->runCallbacks($this->tickCallbacks, [ $this->ls ]);
+        $this->timer->tick();
+        $this->fire(self::EVENT_TICK);
+//        $this->runCallbacks($this->tickCallbacks, [ $this->ls ]);
         if ($this->splitTime < 2) {
             $this->split();
             return;
@@ -63,7 +84,8 @@ class Recorder
             $this->ls->google->getGoogleService()->doorbell->extendLivestream($this->ls);
             $this->startStream();
             $this->extended = true;
-            $this->runCallbacks($this->extendCallbacks, [ $this->ls ]);
+            $this->fire(self::EVENT_EXTEND);
+            //$this->runCallbacks($this->extendCallbacks, [ $this->ls ]);
             Loop::futureTick(function () {
                 $this->extended = false;
             });
@@ -72,8 +94,12 @@ class Recorder
 
     public function stop()
     {
+        if ($this->isStreaming()) {
+            $this->stopStream();
+        }
+        $this->timer->stop();
         Loop::stop();
-        $this->runCallbacks($this->stopCallbacks, [ $this->ls ]);
+        $this->fire(self::EVENT_STOP);
     }
 
     protected function resetSplitTime()
@@ -85,9 +111,15 @@ class Recorder
     {
         $this->resetSplitTime();
         $this->stopStream();
-        $this->mainFilePath=null;
-        $this->tempFilePath=null;
+        $this->currentRecord->stop();
+        $this->currentRecord->saveInfo();
+        $this->recordings[] = $this->currentRecord;
+        $this->mainFilePath = null;
+        $this->tempFilePath = null;
         $this->startStream();
+        $this->currentRecord = new Record($this->mainFilePath);
+        $this->currentRecord->start();
+        $this->fire(self::EVENT_SPLIT);
     }
 
     protected function joinFiles()
@@ -97,7 +129,7 @@ class Recorder
         $file1 = Path::getFilename($tmpMainFilePath);
         $file2 = Path::getFilename($this->tempFilePath);
 
-        $textFilePath = Path::join($this->paths->getDirectoryPath(), 'inputs.txt');
+        $textFilePath = Path::join($this->paths->getFileDirectoryPath(), 'inputs.txt');
         if (File::exists($textFilePath)) {
             File::delete($textFilePath);
         }
@@ -106,7 +138,7 @@ class Recorder
         $command = "ffmpeg -f concat -i inputs.txt -vcodec copy -acodec copy -y {$this->mainFilePath}";
         $process = new Process(explode(' ', $command));
         $process
-            ->setWorkingDirectory($this->paths->getDirectoryPath())
+            ->setWorkingDirectory($this->paths->getFileDirectoryPath())
             ->setTimeout(null)
             ->setIdleTimeout(null)
             ->enableOutput()
@@ -142,6 +174,11 @@ class Recorder
         $this->streamProcess->start();
     }
 
+    protected function isStreaming()
+    {
+        return $this->streamProcess->isRunning();
+    }
+
     protected function stopStream()
     {
         $this->streamProcess->stop(1);
@@ -152,40 +189,63 @@ class Recorder
         return $this->ticks;
     }
 
-    public function onStart(callable $callback)
+    public function on(string $event, callable $listener)
     {
-        $this->startCallbacks[] = $callback;
+        $this->events->listen($event, $listener);
         return $this;
     }
 
-    public function onTick(callable $callback)
+    public function off(string $event)
     {
-        $this->tickCallbacks[] = $callback;
+        $this->events->forget($event);
         return $this;
     }
 
-    public function onExtend(callable $callback)
+    protected function fire(string $event, array $payload = [])
     {
-        $this->extendCallbacks[] = $callback;
+        $this->events->dispatch($event, $payload);
         return $this;
     }
 
-    public function onStop(callable $callback)
+    public function setSplitTime(int $splitTime)
     {
-        $this->stopCallbacks[] = $callback;
+        $this->splitTime = $splitTime;
         return $this;
     }
 
-    /**
-     * @param array|callable[] $callbacks
-     * @param array            $arguments
-     * @return void
-     */
-    protected function runCallbacks(array $callbacks, array $arguments = [])
+    public function getSplitTime(): int
     {
-        foreach ($callbacks as $callback) {
-            $callback(...$arguments);
-        }
+        return $this->splitTime;
+    }
+
+    public function getMainFilePath()
+    {
+        return $this->mainFilePath;
+    }
+
+    public function getTempFilePath()
+    {
+        return $this->tempFilePath;
+    }
+
+    public function getLiveStream(): LiveStream
+    {
+        return $this->ls;
+    }
+
+    public function getRecordings()
+    {
+        return $this->recordings;
+    }
+
+    public function getCurrentRecord(): Record
+    {
+        return $this->currentRecord;
+    }
+
+    public function getPreviousRecord(): Record
+    {
+        return last($this->recordings);
     }
 
 }
